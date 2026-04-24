@@ -1,0 +1,106 @@
+# TradeLog — Project Rules & Documentation
+
+## 1. Database Schema (Firestore)
+
+### Collection: `users/{uid}`
+| Field | Type | Description |
+|---|---|---|
+| uid | string | Firebase Auth UID |
+| email | string | User email |
+| displayName | string | Display name |
+| role | string | `mentor` / `collaborator` / `client` |
+| createdAt | string | ISO timestamp |
+
+### Collection: `trades/{id}`
+| Field | Type | Description |
+|---|---|---|
+| uid | string | Owner UID |
+| ticker | string | Stock symbol (uppercase) |
+| entryPrice | number | Entry price |
+| exitPrice | number \| null | Exit price (null if open) |
+| date | string | Trade date (YYYY-MM-DD) |
+| notes | string | Trade rationale / notes |
+| chartUrl | string | Firebase Storage URL for chart screenshot |
+| status | string | `open` / `closed` |
+| createdAt | string | ISO timestamp |
+
+### Collection: `clients/{id}`
+| Field | Type | Description |
+|---|---|---|
+| uid | string | Mentor UID |
+| name | string | Client/mentee name |
+| riskProfile | string | `conservative` / `moderate` / `aggressive` |
+| type | string | `individual` / `group` |
+| members | string[] | Group member names |
+| notes | string | Background notes |
+| createdAt | string | ISO timestamp |
+
+### Collection: `insights/{id}`
+| Field | Type | Description |
+|---|---|---|
+| clientId | string | Reference to client doc |
+| uid | string | Mentor UID |
+| ticker | string | Stock symbol |
+| advice | string | Trade advice given |
+| riskLevel | string | `low` / `medium` / `high` |
+| outcome | string | `pending` / `profit` / `loss` / `neutral` |
+| outcomeNotes | string | What happened |
+| createdAt | string | ISO timestamp |
+
+---
+
+## 2. Color Palettes
+
+### Dark Mode
+| Token | Hex | Usage |
+|---|---|---|
+| bg-primary | `#0D1117` | Main background |
+| bg-secondary | `#161B22` | Cards, sidebar |
+| bg-tertiary | `#1C2129` | Nested surfaces |
+| bg-hover | `#21262D` | Interactive hover |
+| text-primary | `#E6EDF3` | Main text |
+| text-secondary | `#8B949E` | Secondary text |
+| text-muted | `#6E7681` | Muted/hint text |
+| accent | `#58A6FF` | Links, active state |
+| accent-hover | `#79C0FF` | Accent hover |
+| success | `#3FB950` | Profit / positive |
+| danger | `#F85149` | Loss / negative |
+| warning | `#D29922` | Caution |
+| border | `#30363D` | Borders |
+
+### Light Mode
+| Token | Hex | Usage |
+|---|---|---|
+| bg-primary | `#F6F8FA` | Main background |
+| bg-secondary | `#FFFFFF` | Cards, sidebar |
+| bg-tertiary | `#EEF1F5` | Nested surfaces |
+| bg-hover | `#E8ECF0` | Interactive hover |
+| text-primary | `#1F2328` | Main text |
+| text-secondary | `#656D76` | Secondary text |
+| text-muted | `#8B949E` | Muted/hint text |
+| accent | `#0969DA` | Links, active state |
+| accent-hover | `#0550AE` | Accent hover |
+| success | `#1A7F37` | Profit / positive |
+| danger | `#CF222E` | Loss / negative |
+| warning | `#9A6700` | Caution |
+| border | `#D0D7DE` | Borders |
+
+---
+
+## 3. UI Rules
+
+1. **Simplified, clutter-free UI**: The main views must stay clean. No unnecessary charts, graphs, or advanced metrics on the primary dashboard. Keep trade cards minimal (ticker, P&L badge, date). Details are only shown on expand/click.
+
+2. **Modular components**: Every UI section must be a standalone React component in `/src/components/`. Pages compose components but never embed complex logic directly.
+
+3. **Consistent token usage**: Always use CSS custom properties (`var(--bg-primary)`, etc.) for colors. Never hardcode hex values in components.
+
+4. **Responsive-first**: Every layout must work on both desktop (1200px+) and mobile (320px). Use the sidebar-collapse pattern on mobile.
+
+5. **Offline-first**: All data flows through Firestore with offline persistence enabled. The app must remain functional without network connectivity.
+
+6. **Theme toggle**: Both Light and Dark modes must be visually tested. The toggle must persist across sessions via `localStorage`.
+
+7. **Ticker linking**: Any stock symbol entered in notes, advice, or trade forms must auto-detect and render as clickable TradingView + Groww links.
+
+8. **No breaking changes**: Future modifications must maintain backward compatibility with the Firestore schema defined above.
