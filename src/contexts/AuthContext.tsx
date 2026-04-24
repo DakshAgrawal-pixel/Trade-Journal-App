@@ -7,11 +7,13 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
   ReactNode,
 } from 'react';
 import {
   onAuthStateChanged,
   signInWithRedirect,
+  getRedirectResult,
   signOut,
   User,
 } from 'firebase/auth';
@@ -48,46 +50,104 @@ const AuthContext = createContext<AuthContextType>({
   setUserRole: async () => {},
 });
 
+/**
+ * Loads or creates the Firestore user profile for the given Firebase user.
+ */
+async function loadOrCreateProfile(firebaseUser: User): Promise<UserProfile> {
+  if (!db) throw new Error('Firestore not initialised');
+  const docRef = doc(db, 'users', firebaseUser.uid);
+  const snap = await getDoc(docRef);
+  if (snap.exists()) {
+    return snap.data() as UserProfile;
+  }
+  // First-time Google sign-in: create profile with default role
+  const newProfile: UserProfile = {
+    uid: firebaseUser.uid,
+    email: firebaseUser.email || '',
+    displayName: firebaseUser.displayName || 'Trader',
+    role: 'mentor',
+    photoURL: firebaseUser.photoURL || '',
+  };
+  await setDoc(docRef, {
+    ...newProfile,
+    createdAt: new Date().toISOString(),
+  });
+  return newProfile;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  // Global loading gate – stays true until BOTH onAuthStateChanged and
+  // getRedirectResult have settled, preventing premature redirects.
   const [loading, setLoading] = useState(true);
   const configured = typeof window !== 'undefined' && isConfigured();
+
+  // Track independent resolution of the two async auth signals.
+  const authStateResolved = useRef(false);
+  const redirectResolved = useRef(false);
+
+  /**
+   * Only flip loading → false once both signals have resolved.
+   * Using refs avoids depending on React state batching order.
+   */
+  const maybeFinishLoading = useCallback(() => {
+    if (authStateResolved.current && redirectResolved.current) {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!auth) {
       setLoading(false);
       return;
     }
+
+    // --- 1. Listen for auth-state changes (fires immediately) -----------
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser && db) {
-        const docRef = doc(db, 'users', firebaseUser.uid);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          setProfile(snap.data() as UserProfile);
-        } else {
-          // First-time Google sign-in: create profile with default role
-          const newProfile: UserProfile = {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email || '',
-            displayName: firebaseUser.displayName || 'Trader',
-            role: 'mentor',
-            photoURL: firebaseUser.photoURL || '',
-          };
-          await setDoc(docRef, {
-            ...newProfile,
-            createdAt: new Date().toISOString(),
-          });
-          setProfile(newProfile);
+        try {
+          const p = await loadOrCreateProfile(firebaseUser);
+          setProfile(p);
+        } catch (err) {
+          console.error('[Auth] Failed to load profile:', err);
+          setProfile(null);
         }
       } else {
         setProfile(null);
       }
-      setLoading(false);
+      authStateResolved.current = true;
+      maybeFinishLoading();
     });
+
+    // --- 2. Wait for any pending redirect result -------------------------
+    getRedirectResult(auth)
+      .then(async (result) => {
+        // If a redirect login just completed, onAuthStateChanged will also
+        // fire with the user, but we may reach here first. Handle the
+        // profile eagerly so the user sees instant login after redirect.
+        if (result?.user && db) {
+          setUser(result.user);
+          try {
+            const p = await loadOrCreateProfile(result.user);
+            setProfile(p);
+          } catch (err) {
+            console.error('[Auth] Failed to load redirect profile:', err);
+          }
+        }
+      })
+      .catch((err) => {
+        // Redirect errors (e.g. popup closed, network) are non-fatal.
+        console.warn('[Auth] getRedirectResult error:', err);
+      })
+      .finally(() => {
+        redirectResolved.current = true;
+        maybeFinishLoading();
+      });
+
     return unsub;
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loginWithGoogle = useCallback(async () => {
     if (!auth || !googleProvider) {
